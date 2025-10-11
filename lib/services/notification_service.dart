@@ -9,13 +9,9 @@ class NotificationService {
   FlutterLocalNotificationsPlugin();
 
   static Future<void> initialize() async {
-    // Request permissions
     await requestPermissions();
 
-    // Android initialization
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-
-    // iOS initialization
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -34,56 +30,60 @@ class NotificationService {
   }
 
   static Future<void> requestPermissions() async {
-    if (await Permission.notification.isDenied) {
-      await Permission.notification.request();
-    }
+    await Permission.notification.request();
+    await Permission.scheduleExactAlarm.request();
   }
 
   static void onNotificationTap(NotificationResponse response) {
-    // Handle notification tap
     print('Notification tapped: ${response.payload}');
   }
 
-  // Schedule notification for 1 day before due date
+  // Schedule EXACT TIME alarm notification (not 1 day before)
   static Future<void> scheduleNotification(Todo todo) async {
-    // Cancel any existing notification
     if (todo.notificationId != null) {
       await cancelNotification(todo.notificationId!);
     }
 
-    // Calculate notification time (1 day before due date at 9 AM)
-    final scheduledDate = tz.TZDateTime.from(
-      todo.dueDate.subtract(const Duration(days: 1)),
-      tz.local,
+    // Create exact due date/time
+    final dueDateTime = DateTime(
+      todo.dueDate.year,
+      todo.dueDate.month,
+      todo.dueDate.day,
+      todo.dueTime.hour,
+      todo.dueTime.minute,
     );
 
-    final scheduledTime = tz.TZDateTime(
-      tz.local,
-      scheduledDate.year,
-      scheduledDate.month,
-      scheduledDate.day,
-      9, // 9 AM
-      0,
-    );
+    final scheduledTime = tz.TZDateTime.from(dueDateTime, tz.local);
 
-    // Only schedule if the time is in the future
+    // Only schedule if in the future
     if (scheduledTime.isAfter(tz.TZDateTime.now(tz.local))) {
+      // ALARM-STYLE notification with custom sound
       const androidDetails = AndroidNotificationDetails(
-        'todo_reminders',
-        'Todo Reminders',
-        channelDescription: 'Reminders for upcoming todos',
-        importance: Importance.high,
-        priority: Priority.high,
+        'todo_alarms',
+        'Task Alarms',
+        channelDescription: 'Alarm notifications for tasks',
+        importance: Importance.max,
+        priority: Priority.max,
         icon: '@mipmap/ic_launcher',
-        color: Color(0xFF673AB7),
+        color: Color(0xFF2196F3),
         enableVibration: true,
         playSound: true,
+        sound: RawResourceAndroidNotificationSound('alarm'), // Custom alarm sound
+        fullScreenIntent: true,
+        category: AndroidNotificationCategory.alarm,
+        visibility: NotificationVisibility.public,
+        ticker: 'Task Due Now!',
+        autoCancel: false,
+        ongoing: true,
+        timeoutAfter: 60000, // Auto dismiss after 1 minute
       );
 
       const iosDetails = DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
+        sound: 'alarm.mp3',
+        interruptionLevel: InterruptionLevel.timeSensitive,
       );
 
       const details = NotificationDetails(
@@ -91,56 +91,75 @@ class NotificationService {
         iOS: iosDetails,
       );
 
-      // FIXED: Removed uiLocalNotificationDateInterpretation parameter
       await _notifications.zonedSchedule(
         todo.notificationId ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        '🔔 Reminder: ${todo.title}',
-        'Due tomorrow! ${todo.description.isNotEmpty ? todo.description : "Don\'t forget!"}',
+        '⏰ TASK DUE NOW!',
+        '${todo.title}\n${todo.description.isNotEmpty ? todo.description : "Complete this task now!"}',
         scheduledTime,
         details,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         payload: todo.id,
       );
+
+      // Schedule 1 hour reminder as well
+      final reminderTime = scheduledTime.subtract(const Duration(hours: 1));
+      if (reminderTime.isAfter(tz.TZDateTime.now(tz.local))) {
+        await _notifications.zonedSchedule(
+          (todo.notificationId ?? 0) + 1,
+          '🔔 Upcoming Task',
+          '${todo.title} - Due in 1 hour',
+          reminderTime,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'todo_reminders',
+              'Task Reminders',
+              importance: Importance.high,
+              priority: Priority.high,
+              enableVibration: true,
+              playSound: true,
+            ),
+            iOS: DarwinNotificationDetails(
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
+            ),
+          ),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          payload: todo.id,
+        );
+      }
     }
   }
 
-  // Show immediate notification
   static Future<void> showNotification(String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
       'todo_alerts',
       'Todo Alerts',
-      channelDescription: 'Immediate alerts for todos',
       importance: Importance.high,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
+      enableVibration: true,
+      playSound: true,
     );
 
     const iosDetails = DarwinNotificationDetails();
-
-    const details = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
 
     await _notifications.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title,
       body,
-      details,
+      const NotificationDetails(android: androidDetails, iOS: iosDetails),
     );
   }
 
-  // Cancel notification
   static Future<void> cancelNotification(int id) async {
     await _notifications.cancel(id);
+    await _notifications.cancel(id + 1); // Cancel reminder too
   }
 
-  // Cancel all notifications
   static Future<void> cancelAllNotifications() async {
     await _notifications.cancelAll();
   }
 
-  // Get pending notifications
   static Future<List<PendingNotificationRequest>> getPendingNotifications() async {
     return await _notifications.pendingNotificationRequests();
   }
