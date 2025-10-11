@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/todo_model.dart';
 import '../services/Storage Service.dart';
+import '../services/Widget.dart';
 import '../services/notification_service.dart';
 import '../widgets/Pending_taskWidget.dart';
 import '../widgets/add_todo.dart';
@@ -32,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _saveTodos() {
+    WidgetService.updateWidget(_todos);
     StorageService.saveTodos(_todos);
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:todo_app/screens/HomeScreen.dart';
 import 'package:todo_app/services/Storage%20Service.dart';
+import 'package:todo_app/services/Widget.dart';
 import 'services/notification_service.dart';
 
 void main() async {
@@ -13,7 +14,7 @@ void main() async {
 
   // Initialize notifications
   await NotificationService.initialize();
-
+  await WidgetService.initialize();
   // Initialize storage
   await StorageService.initialize();
 

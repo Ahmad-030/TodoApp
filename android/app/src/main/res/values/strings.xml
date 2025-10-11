@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Todo App</string>
+    <string name="widget_description">Shows your pending tasks</string>
+</resources>
