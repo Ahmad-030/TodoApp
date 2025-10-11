@@ -21,8 +21,15 @@ class StorageService {
     final jsonString = _prefs.getString(_todosKey);
     if (jsonString == null) return [];
 
-    final jsonList = jsonDecode(jsonString) as List;
-    return jsonList.map((json) => Todo.fromJson(json as Map<String, dynamic>)).toList();
+    try {
+      final jsonList = jsonDecode(jsonString) as List;
+      return jsonList
+          .map((json) => Todo.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      print('Error loading todos: $e');
+      return [];
+    }
   }
 
   // Clear all todos

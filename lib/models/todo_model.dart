@@ -1,8 +1,11 @@
+import 'package:flutter/material.dart';
+
 class Todo {
   String id;
   String title;
   String description;
   DateTime dueDate;
+  TimeOfDay dueTime;
   bool isCompleted;
   DateTime createdAt;
   int? notificationId;
@@ -12,18 +15,21 @@ class Todo {
     required this.title,
     required this.description,
     required this.dueDate,
+    required this.dueTime,
     this.isCompleted = false,
     required this.createdAt,
     this.notificationId,
   });
 
   // Convert to JSON
-  Map toJson() {
+  Map<String, dynamic> toJson() {
     return {
       'id': id,
       'title': title,
       'description': description,
       'dueDate': dueDate.toIso8601String(),
+      'dueTimeHour': dueTime.hour,
+      'dueTimeMinute': dueTime.minute,
       'isCompleted': isCompleted,
       'createdAt': createdAt.toIso8601String(),
       'notificationId': notificationId,
@@ -31,16 +37,41 @@ class Todo {
   }
 
   // Create from JSON
-  factory Todo.fromJson(Map json) {
+  factory Todo.fromJson(Map<String, dynamic> json) {
     return Todo(
       id: json['id'],
       title: json['title'],
       description: json['description'],
       dueDate: DateTime.parse(json['dueDate']),
+      dueTime: TimeOfDay(
+        hour: json['dueTimeHour'] ?? 9,
+        minute: json['dueTimeMinute'] ?? 0,
+      ),
       isCompleted: json['isCompleted'],
       createdAt: DateTime.parse(json['createdAt']),
       notificationId: json['notificationId'],
     );
+  }
+
+  // Get combined DateTime with time
+  DateTime get dueDateTimeComplete {
+    return DateTime(
+      dueDate.year,
+      dueDate.month,
+      dueDate.day,
+      dueTime.hour,
+      dueTime.minute,
+    );
+  }
+
+  // Get minutes until due
+  int get minutesUntilDue {
+    return dueDateTimeComplete.difference(DateTime.now()).inMinutes;
+  }
+
+  // Get hours until due
+  int get hoursUntilDue {
+    return dueDateTimeComplete.difference(DateTime.now()).inHours;
   }
 
   // Get days until due
@@ -50,12 +81,21 @@ class Todo {
 
   // Check if overdue
   bool get isOverdue {
-    return daysUntilDue < 0 && !isCompleted;
+    return minutesUntilDue < 0 && !isCompleted;
   }
 
-  // Check if due soon (within 1 day)
+  // Check if due soon (within 24 hours)
   bool get isDueSoon {
-    return daysUntilDue <= 1 && daysUntilDue >= 0 && !isCompleted;
+    return hoursUntilDue <= 24 && hoursUntilDue >= 0 && !isCompleted;
+  }
+
+  // Check if due today
+  bool get isDueToday {
+    final now = DateTime.now();
+    return dueDate.year == now.year &&
+        dueDate.month == now.month &&
+        dueDate.day == now.day &&
+        !isCompleted;
   }
 
   // Copy with
@@ -63,6 +103,7 @@ class Todo {
     String? title,
     String? description,
     DateTime? dueDate,
+    TimeOfDay? dueTime,
     bool? isCompleted,
     int? notificationId,
   }) {
@@ -71,6 +112,7 @@ class Todo {
       title: title ?? this.title,
       description: description ?? this.description,
       dueDate: dueDate ?? this.dueDate,
+      dueTime: dueTime ?? this.dueTime,
       isCompleted: isCompleted ?? this.isCompleted,
       createdAt: createdAt,
       notificationId: notificationId ?? this.notificationId,
