@@ -9,9 +9,12 @@ class NotificationService {
   FlutterLocalNotificationsPlugin();
 
   static Future<void> initialize() async {
+    // Request permissions first
     await requestPermissions();
 
+    // Android settings with alarm channel
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -27,22 +30,84 @@ class NotificationService {
       initSettings,
       onDidReceiveNotificationResponse: onNotificationTap,
     );
+
+    // Create notification channels
+    await _createNotificationChannels();
+  }
+
+  static Future<void> _createNotificationChannels() async {
+    // High priority alarm channel (using default system sound)
+    const alarmChannel = AndroidNotificationChannel(
+      'todo_alarms',
+      'Task Alarms',
+      description: 'Alarm notifications for tasks',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+      enableLights: true,
+      // Using default notification sound - more reliable
+    );
+
+    // Regular reminder channel
+    const reminderChannel = AndroidNotificationChannel(
+      'todo_reminders',
+      'Task Reminders',
+      description: 'Reminder notifications for upcoming tasks',
+      importance: Importance.high,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    // Alert channel for tests
+    const alertChannel = AndroidNotificationChannel(
+      'todo_alerts',
+      'Todo Alerts',
+      description: 'General alerts and notifications',
+      importance: Importance.high,
+      playSound: true,
+    );
+
+    final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(alarmChannel);
+      await androidPlugin.createNotificationChannel(reminderChannel);
+      await androidPlugin.createNotificationChannel(alertChannel);
+    }
   }
 
   static Future<void> requestPermissions() async {
-    await Permission.notification.request();
-    await Permission.scheduleExactAlarm.request();
+    // Request notification permission
+    final notificationStatus = await Permission.notification.request();
+    print('Notification permission: $notificationStatus');
+
+    // Request exact alarm permission (Android 12+)
+    final alarmStatus = await Permission.scheduleExactAlarm.request();
+    print('Exact alarm permission: $alarmStatus');
+
+    // Check if we have the permissions
+    if (!notificationStatus.isGranted) {
+      print('⚠️ Notification permission not granted!');
+    }
+    if (!alarmStatus.isGranted) {
+      print('⚠️ Exact alarm permission not granted!');
+    }
   }
 
   static void onNotificationTap(NotificationResponse response) {
     print('Notification tapped: ${response.payload}');
   }
 
-  // Schedule EXACT TIME alarm notification (not 1 day before)
+  // Schedule EXACT TIME alarm notification
   static Future<void> scheduleNotification(Todo todo) async {
-    if (todo.notificationId != null) {
-      await cancelNotification(todo.notificationId!);
+    if (todo.notificationId == null) {
+      print('⚠️ No notification ID for todo: ${todo.title}');
+      return;
     }
+
+    // Cancel any existing notifications for this task
+    await cancelNotification(todo.notificationId!);
 
     // Create exact due date/time
     final dueDateTime = DateTime(
@@ -51,13 +116,23 @@ class NotificationService {
       todo.dueDate.day,
       todo.dueTime.hour,
       todo.dueTime.minute,
+      0, // seconds
+      0, // milliseconds
     );
 
+    // Convert to TZDateTime using local timezone
     final scheduledTime = tz.TZDateTime.from(dueDateTime, tz.local);
+    final now = tz.TZDateTime.now(tz.local);
 
-    // Only schedule if in the future
-    if (scheduledTime.isAfter(tz.TZDateTime.now(tz.local))) {
-      // ALARM-STYLE notification with custom sound
+    print('📅 Scheduling alarm for: ${todo.title}');
+    print('⏰ Due time: $scheduledTime');
+    print('🕐 Current time: $now');
+    print('⏳ Time difference: ${scheduledTime.difference(now).inMinutes} minutes');
+    print('⏳ Time difference: ${scheduledTime.difference(now).inSeconds} seconds');
+
+    // Only schedule if in the future (at least 1 second ahead)
+    if (scheduledTime.isAfter(now.add(const Duration(seconds: 1)))) {
+      // MAIN ALARM at exact due time (using default system sound)
       const androidDetails = AndroidNotificationDetails(
         'todo_alarms',
         'Task Alarms',
@@ -68,14 +143,19 @@ class NotificationService {
         color: Color(0xFF2196F3),
         enableVibration: true,
         playSound: true,
-        sound: RawResourceAndroidNotificationSound('alarm'), // Custom alarm sound
+        // Using default sound - more reliable across all devices
         fullScreenIntent: true,
         category: AndroidNotificationCategory.alarm,
         visibility: NotificationVisibility.public,
-        ticker: 'Task Due Now!',
+        ticker: '⏰ Task Due Now!',
         autoCancel: false,
-        ongoing: true,
-        timeoutAfter: 60000, // Auto dismiss after 1 minute
+        ongoing: false,
+        timeoutAfter: 300000, // Auto dismiss after 5 minutes
+        channelShowBadge: true,
+        showWhen: true,
+        ledColor: Color(0xFF2196F3),
+        ledOnMs: 1000,
+        ledOffMs: 500,
       );
 
       const iosDetails = DarwinNotificationDetails(
@@ -91,43 +171,86 @@ class NotificationService {
         iOS: iosDetails,
       );
 
-      await _notifications.zonedSchedule(
-        todo.notificationId ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        '⏰ TASK DUE NOW!',
-        '${todo.title}\n${todo.description.isNotEmpty ? todo.description : "Complete this task now!"}',
-        scheduledTime,
-        details,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        payload: todo.id,
-      );
-
-      // Schedule 1 hour reminder as well
-      final reminderTime = scheduledTime.subtract(const Duration(hours: 1));
-      if (reminderTime.isAfter(tz.TZDateTime.now(tz.local))) {
+      try {
         await _notifications.zonedSchedule(
-          (todo.notificationId ?? 0) + 1,
-          '🔔 Upcoming Task',
-          '${todo.title} - Due in 1 hour',
-          reminderTime,
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'todo_reminders',
-              'Task Reminders',
-              importance: Importance.high,
-              priority: Priority.high,
-              enableVibration: true,
-              playSound: true,
-            ),
-            iOS: DarwinNotificationDetails(
-              presentAlert: true,
-              presentBadge: true,
-              presentSound: true,
-            ),
-          ),
+          todo.notificationId!,
+          '⏰ TASK DUE NOW!',
+          '${todo.title}\n${todo.description.isNotEmpty ? todo.description : "Complete this task now!"}',
+          scheduledTime,
+          details,
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           payload: todo.id,
         );
+        print('✅ Main alarm scheduled successfully for ID: ${todo.notificationId}');
+
+        // Immediately verify it was scheduled
+        final pending = await _notifications.pendingNotificationRequests();
+        final mainAlarm = pending.where((p) => p.id == todo.notificationId).firstOrNull;
+        if (mainAlarm != null) {
+          print('✅ VERIFIED: Main alarm is in pending list');
+        } else {
+          print('❌ WARNING: Main alarm NOT in pending list!');
+        }
+      } catch (e) {
+        print('❌ Error scheduling main alarm: $e');
+        print('❌ Stack trace: ${StackTrace.current}');
       }
+
+      // Schedule 1 hour early reminder (only if more than 1 hour away)
+      final reminderTime = scheduledTime.subtract(const Duration(hours: 1));
+      if (reminderTime.isAfter(now.add(const Duration(seconds: 1)))) {
+        const reminderDetails = AndroidNotificationDetails(
+          'todo_reminders',
+          'Task Reminders',
+          channelDescription: 'Reminder notifications for upcoming tasks',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          color: Color(0xFF2196F3),
+          enableVibration: true,
+          playSound: true,
+        );
+
+        const reminderIosDetails = DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        );
+
+        const reminderNotification = NotificationDetails(
+          android: reminderDetails,
+          iOS: reminderIosDetails,
+        );
+
+        try {
+          await _notifications.zonedSchedule(
+            todo.notificationId! + 1,
+            '🔔 Upcoming Task',
+            '${todo.title} - Due in 1 hour',
+            reminderTime,
+            reminderNotification,
+            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            payload: todo.id,
+          );
+          print('✅ Reminder alarm scheduled successfully for ID: ${todo.notificationId! + 1}');
+        } catch (e) {
+          print('❌ Error scheduling reminder: $e');
+        }
+      } else {
+        print('⏭️ Skipping reminder - task is less than 1 hour away');
+      }
+
+      // Final verification of all pending alarms
+      final allPending = await _notifications.pendingNotificationRequests();
+      print('📋 Total pending notifications: ${allPending.length}');
+      for (var p in allPending) {
+        print('  - ID: ${p.id}, Title: ${p.title}, Body: ${p.body}');
+      }
+    } else {
+      print('⚠️ Cannot schedule alarm in the past!');
+      print('⚠️ Scheduled time: $scheduledTime');
+      print('⚠️ Current time: $now');
+      print('⚠️ Difference: ${scheduledTime.difference(now).inSeconds} seconds');
     }
   }
 
@@ -135,29 +258,43 @@ class NotificationService {
     const androidDetails = AndroidNotificationDetails(
       'todo_alerts',
       'Todo Alerts',
+      channelDescription: 'General alerts and notifications',
       importance: Importance.high,
       priority: Priority.high,
       enableVibration: true,
       playSound: true,
+      icon: '@mipmap/ic_launcher',
+      color: Color(0xFF2196F3),
     );
 
-    const iosDetails = DarwinNotificationDetails();
-
-    await _notifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      const NotificationDetails(android: androidDetails, iOS: iosDetails),
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
     );
+
+    try {
+      await _notifications.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title,
+        body,
+        const NotificationDetails(android: androidDetails, iOS: iosDetails),
+      );
+      print('✅ Test notification sent!');
+    } catch (e) {
+      print('❌ Error showing notification: $e');
+    }
   }
 
   static Future<void> cancelNotification(int id) async {
     await _notifications.cancel(id);
     await _notifications.cancel(id + 1); // Cancel reminder too
+    print('🗑️ Cancelled notifications for ID: $id');
   }
 
   static Future<void> cancelAllNotifications() async {
     await _notifications.cancelAll();
+    print('🗑️ All notifications cancelled');
   }
 
   static Future<List<PendingNotificationRequest>> getPendingNotifications() async {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/todo_model.dart';
 import '../services/Storage Service.dart';
 import '../services/notification_service.dart';
 
@@ -114,6 +115,165 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildSectionTitle('Debug & Testing'),
+                  const SizedBox(height: 12),
+                  _buildCard([
+                    _buildListTile(
+                      icon: Icons.bug_report,
+                      iconColor: Colors.purple,
+                      title: 'Schedule Test (2 min)',
+                      subtitle: 'Creates alarm 2 minutes from now',
+                      onTap: () async {
+                        final now = DateTime.now();
+                        final testTime = now.add(const Duration(minutes: 2));
+                        final testTodo = Todo(
+                          id: 'test_${now.millisecondsSinceEpoch}',
+                          title: 'TEST ALARM',
+                          description: 'This is a test alarm set for 2 minutes from now',
+                          dueDate: testTime,
+                          dueTime: TimeOfDay.fromDateTime(testTime),
+                          createdAt: now,
+                          notificationId: now.millisecondsSinceEpoch ~/ 1000,
+                        );
+
+                        await NotificationService.scheduleNotification(testTodo);
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  const Icon(Icons.alarm, color: Colors.white),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text('Test alarm set for ${TimeOfDay.fromDateTime(testTime).format(context)}'),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: Colors.purple,
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 5),
+                            ),
+                          );
+                        }
+
+                        _loadPendingNotifications();
+                      },
+                    ),
+                    const Divider(height: 1),
+                    _buildListTile(
+                      icon: Icons.schedule,
+                      iconColor: Colors.blue,
+                      title: 'Schedule Test (30 sec)',
+                      subtitle: 'Creates alarm 30 seconds from now',
+                      onTap: () async {
+                        final now = DateTime.now();
+                        final testTime = now.add(const Duration(seconds: 30));
+                        final testTodo = Todo(
+                          id: 'test_${now.millisecondsSinceEpoch}',
+                          title: '🚨 30 SECOND TEST',
+                          description: 'Should ring in 30 seconds!',
+                          dueDate: testTime,
+                          dueTime: TimeOfDay.fromDateTime(testTime),
+                          createdAt: now,
+                          notificationId: now.millisecondsSinceEpoch ~/ 1000,
+                        );
+
+                        await NotificationService.scheduleNotification(testTodo);
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(Icons.timer, color: Colors.white),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text('Alarm will ring in 30 seconds! Check console logs.'),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: Colors.blue,
+                              behavior: SnackBarBehavior.floating,
+                              duration: Duration(seconds: 5),
+                            ),
+                          );
+                        }
+
+                        _loadPendingNotifications();
+                      },
+                    ),
+                    const Divider(height: 1),
+                    _buildListTile(
+                      icon: Icons.info_outline,
+                      iconColor: Colors.orange,
+                      title: 'View Debug Logs',
+                      subtitle: 'Check console for scheduling info',
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Row(
+                              children: [
+                                Icon(Icons.info, color: Colors.orange),
+                                SizedBox(width: 12),
+                                Text('Debug Information'),
+                              ],
+                            ),
+                            content: const SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Check Your Console',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'When you create or schedule an alarm, look for these messages in your console/logcat:',
+                                    style: TextStyle(fontSize: 14),
+                                  ),
+                                  SizedBox(height: 12),
+                                  Text('✅ = Success', style: TextStyle(color: Colors.green)),
+                                  Text('❌ = Error', style: TextStyle(color: Colors.red)),
+                                  Text('⚠️ = Warning', style: TextStyle(color: Colors.orange)),
+                                  Text('📋 = Pending count'),
+                                  Text('⏰ = Time info'),
+                                  SizedBox(height: 12),
+                                  Text(
+                                    'Key Messages to Look For:',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text('• "Main alarm scheduled successfully"'),
+                                  Text('• "VERIFIED: Main alarm is in pending list"'),
+                                  Text('• Total pending notifications count'),
+                                  SizedBox(height: 12),
+                                  Text(
+                                    'If You See Errors:',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text('• Check permissions are granted'),
+                                  Text('• Check battery optimization is OFF'),
+                                  Text('• Try the 30-second test alarm'),
+                                  Text('• Restart the app'),
+                                ],
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Got it'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ]),
+                  const SizedBox(height: 24),
                   _buildSectionTitle('Notifications'),
                   const SizedBox(height: 12),
                   _buildCard([
@@ -137,18 +297,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onTap: () async {
                         await NotificationService.cancelAllNotifications();
                         _loadPendingNotifications();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Row(
-                              children: [
-                                Icon(Icons.check_circle, color: Colors.white),
-                                SizedBox(width: 12),
-                                Text('All alarms cancelled'),
-                              ],
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.white),
+                                  SizedBox(width: 12),
+                                  Text('All alarms cancelled'),
+                                ],
+                              ),
+                              backgroundColor: Color(0xFF2196F3),
                             ),
-                            backgroundColor: Color(0xFF2196F3),
-                          ),
-                        );
+                          );
+                        }
                       },
                     ),
                     const Divider(height: 1),

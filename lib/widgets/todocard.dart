@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/todo_model.dart';
-import 'package:flutter/material.dart';
 
 class TodoCard extends StatelessWidget {
   final Todo todo;
@@ -141,6 +140,8 @@ class TodoCard extends StatelessWidget {
                               ? Colors.grey.shade500
                               : null,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       if (todo.description.isNotEmpty) ...[
                         const SizedBox(height: 6),
@@ -158,7 +159,9 @@ class TodoCard extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(height: 12),
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -201,7 +204,6 @@ class TodoCard extends StatelessWidget {
                               ],
                             ),
                           ),
-                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
@@ -231,21 +233,20 @@ class TodoCard extends StatelessWidget {
                               ],
                             ),
                           ),
-                          if (todo.isOverdue) ...[
-                            const SizedBox(width: 8),
-                            _buildBadge('OVERDUE', Colors.red),
-                          ] else if (todo.isDueSoon) ...[
-                            const SizedBox(width: 8),
+                          if (todo.isOverdue)
+                            _buildBadge('OVERDUE', Colors.red)
+                          else if (todo.isDueSoon)
                             _buildBadge('SOON', Colors.orange),
-                          ],
                         ],
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 Icon(
                   Icons.chevron_right,
                   color: Colors.grey.shade400,
+                  size: 20,
                 ),
               ],
             ),

@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     StorageService.saveTodos(_todos);
   }
 
-  void _addTodo(String title, String description, DateTime dueDate, TimeOfDay dueTime) {
+  Future<void> _addTodo(String title, String description, DateTime dueDate, TimeOfDay dueTime) async {
     final notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final todo = Todo(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -65,46 +65,68 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       notificationId: notificationId,
     );
 
-    setState(() {
-      _todos.insert(0, todo);
-    });
+    try {
+      // Add to list first - this updates UI immediately
+      setState(() {
+        _todos.insert(0, todo);
+      });
 
-    NotificationService.scheduleNotification(todo);
-    _saveTodos();
+      // Save to storage
+      _saveTodos();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white),
-            const SizedBox(width: 12),
-            Text('Task added! Alarm set for ${dueTime.format(context)}'),
-          ],
-        ),
-        backgroundColor: const Color(0xFF4CAF50),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+      // Schedule notification
+      await NotificationService.scheduleNotification(todo);
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Task added! Alarm set for ${dueTime.format(context)}'),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF4CAF50),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error adding todo: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding task: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
-  void _editTodo(String id, String title, String description, DateTime dueDate, TimeOfDay dueTime) {
-    setState(() {
-      final index = _todos.indexWhere((t) => t.id == id);
-      if (index != -1) {
+  Future<void> _editTodo(String id, String title, String description, DateTime dueDate, TimeOfDay dueTime) async {
+    final index = _todos.indexWhere((t) => t.id == id);
+    if (index != -1) {
+      setState(() {
         _todos[index] = _todos[index].copyWith(
           title: title,
           description: description,
           dueDate: dueDate,
           dueTime: dueTime,
         );
-        NotificationService.scheduleNotification(_todos[index]);
-      }
-    });
-    _saveTodos();
+      });
+      await NotificationService.scheduleNotification(_todos[index]);
+      _saveTodos();
+    }
   }
 
-  void _toggleTodo(String id) {
+  Future<void> _toggleTodo(String id) async {
     setState(() {
       final todo = _todos.firstWhere((t) => t.id == id);
       todo.isCompleted = !todo.isCompleted;
@@ -117,10 +139,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _saveTodos();
   }
 
-  void _deleteTodo(String id) {
+  Future<void> _deleteTodo(String id) async {
     final todo = _todos.firstWhere((t) => t.id == id);
     if (todo.notificationId != null) {
-      NotificationService.cancelNotification(todo.notificationId!);
+      await NotificationService.cancelNotification(todo.notificationId!);
     }
     setState(() {
       _todos.removeWhere((t) => t.id == id);
@@ -133,9 +155,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => AddTodoDialog(
+      isDismissible: true,
+      enableDrag: true,
+      builder: (dialogContext) => AddTodoDialog(
         editTodo: editTodo,
         onSave: (title, description, dueDate, dueTime) {
+          // Close dialog immediately
+          Navigator.of(dialogContext).pop();
+
+          // Add or edit todo after dialog closes
           if (editTodo == null) {
             _addTodo(title, description, dueDate, dueTime);
           } else {
@@ -151,173 +179,282 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.transparent,
         child: Container(
-          padding: const EdgeInsets.all(24),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.75,
+          ),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white,
-                Colors.blue.shade50,
-              ],
-            ),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(24),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.task_alt, color: Colors.white, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          todo.title,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
-                      ),
+                      color: Colors.blue.shade50,
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade100),
                     ),
-                    child: const Icon(Icons.task_alt, color: Colors.white),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2196F3).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.calendar_today,
+                            size: 22,
+                            color: Color(0xFF2196F3),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Date',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                DateFormat('EEEE, MMM dd, yyyy').format(todo.dueDate),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      todo.title,
-                      style: const TextStyle(
-                        fontSize: 20,
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade100),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2196F3).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.access_time,
+                            size: 22,
+                            color: Color(0xFF2196F3),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Time',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                todo.dueTime.format(context),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green.shade100),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.alarm,
+                            size: 22,
+                            color: Colors.green,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Alarm',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Set for ${todo.dueTime.format(context)}',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (todo.description.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Text(
+                      'Description',
+                      style: TextStyle(
+                        fontSize: 13,
                         fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade600,
+                        letterSpacing: 0.5,
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildDetailRow(
-                Icons.calendar_today,
-                'Date',
-                DateFormat('EEEE, MMM dd, yyyy').format(todo.dueDate),
-              ),
-              const SizedBox(height: 12),
-              _buildDetailRow(
-                Icons.access_time,
-                'Time',
-                todo.dueTime.format(context),
-              ),
-              const SizedBox(height: 12),
-              _buildDetailRow(
-                Icons.alarm,
-                'Alarm',
-                'Set for ${todo.dueTime.format(context)}',
-              ),
-              if (todo.description.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                const Text(
-                  'Description',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  todo.description,
-                  style: const TextStyle(fontSize: 15),
-                ),
-              ],
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.edit),
-                      label: const Text('Edit'),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _showAddTodoDialog(editTodo: todo);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2196F3),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Text(
+                        todo.description,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          height: 1.5,
+                          color: Colors.black87,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.delete),
-                      label: const Text('Delete'),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _deleteTodo(todo.id);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                  ],
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.edit, size: 20),
+                          label: const Text('Edit'),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _showAddTodoDialog(editTodo: todo);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2196F3),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.delete, size: 20),
+                          label: const Text('Delete'),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _deleteTodo(todo.id);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(IconData icon, String label, String value) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2196F3).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 20, color: const Color(0xFF2196F3)),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -338,177 +475,159 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final dueTodayCount = _todos.where((t) => t.isDueToday).length;
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF2196F3),
-              const Color(0xFF2196F3).withOpacity(0.8),
-              Colors.white,
-            ],
-            stops: const [0.0, 0.3, 0.3],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(30),
+                  bottomRight: Radius.circular(30),
+                ),
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Column(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.check_circle, color: Colors.white, size: 28),
-                    ),
-                    const SizedBox(width: 16),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
                         children: [
-                          Text(
-                            'My Tasks',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.check_circle, color: Colors.white, size: 28),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'My Tasks',
+                                  style: TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Text(
+                                  'Stay organized & productive',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          Text(
-                            'Stay organized & productive',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.white70,
-                            ),
+                          IconButton(
+                            icon: const Icon(Icons.settings, color: Colors.white),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const SettingsScreen(),
+                                ),
+                              ).then((_) => _loadTodos());
+                            },
                           ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.settings, color: Colors.white),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const SettingsScreen(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildStatCard('Total', _todos.length.toString(), Icons.task_alt),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildStatCard('Today', dueTodayCount.toString(), Icons.today),
+                              ),
+                            ],
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              // Stats Cards
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Total',
-                        _todos.length.toString(),
-                        Icons.task_alt,
-                        Colors.white,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Today',
-                        dueTodayCount.toString(),
-                        Icons.today,
-                        Colors.orangeAccent,
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildStatCard('Pending', pendingTodos.toString(), Icons.pending_actions),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildStatCard('Done', completedTodos.toString(), Icons.check_circle),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Pending',
-                        pendingTodos.toString(),
-                        Icons.pending_actions,
-                        Colors.amberAccent,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Done',
-                        completedTodos.toString(),
-                        Icons.check_circle,
-                        Colors.greenAccent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Filter Chips
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    const Text(
-                      'Filter',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                    _buildFilterChip('All', 'all'),
-                    const SizedBox(width: 8),
-                    _buildFilterChip('Pending', 'pending'),
-                    const SizedBox(width: 8),
-                    _buildFilterChip('Done', 'completed'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Tasks List
-              Expanded(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(30),
-                    ),
-                  ),
-                  child: _filteredTodos.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-                    itemCount: _filteredTodos.length,
-                    itemBuilder: (context, index) {
-                      final todo = _filteredTodos[index];
-                      return TodoCard(
-                        todo: todo,
-                        onToggle: () => _toggleTodo(todo.id),
-                        onTap: () => _showTodoDetails(todo),
-                        onDelete: () => _deleteTodo(todo.id),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      const Text(
+                        'Filter',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const Spacer(),
+                      _buildFilterChip('All', 'all'),
+                      const SizedBox(width: 8),
+                      _buildFilterChip('Pending', 'pending'),
+                      const SizedBox(width: 8),
+                      _buildFilterChip('Done', 'completed'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+          _filteredTodos.isEmpty
+              ? SliverFillRemaining(child: _buildEmptyState())
+              : SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                  final todo = _filteredTodos[index];
+                  return TodoCard(
+                    todo: todo,
+                    onToggle: () => _toggleTodo(todo.id),
+                    onTap: () => _showTodoDetails(todo),
+                    onDelete: () => _deleteTodo(todo.id),
+                  );
+                },
+                childCount: _filteredTodos.length,
+              ),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: ScaleTransition(
         scale: _fabAnimation,
@@ -523,38 +642,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildStatCard(String label, String count, IconData icon, Color accentColor) {
+  Widget _buildStatCard(String label, String count, IconData icon) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.25),
+        color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.3)),
+        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: accentColor.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(10),
+              color: Colors.white.withOpacity(0.25),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: accentColor, size: 24),
+            child: Icon(icon, color: Colors.white, size: 24),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
             count,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 28,
               fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(
+                  blurRadius: 4,
+                  color: Colors.black26,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
           ),
+          const SizedBox(height: 2),
           Text(
             label,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 13,
+              fontWeight: FontWeight.w500,
+              shadows: [
+                Shadow(
+                  blurRadius: 2,
+                  color: Colors.black26,
+                  offset: Offset(0, 1),
+                ),
+              ],
             ),
           ),
         ],
@@ -568,7 +704,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       onTap: () => setState(() => _filterType = type),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           gradient: isSelected
               ? const LinearGradient(

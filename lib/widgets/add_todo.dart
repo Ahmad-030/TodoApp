@@ -266,13 +266,14 @@ class _AddTodoDialogState extends State<AddTodoDialog> {
                     );
                     return;
                   }
+                  // Call onSave callback - let parent handle navigation
                   widget.onSave(
                     _titleController.text.trim(),
                     _descController.text.trim(),
                     _selectedDate,
                     _selectedTime,
                   );
-                  Navigator.pop(context);
+                  // REMOVED: Navigator.pop(context); - parent will handle this
                 },
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
