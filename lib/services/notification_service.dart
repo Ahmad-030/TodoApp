@@ -31,21 +31,21 @@ class NotificationService {
       onDidReceiveNotificationResponse: onNotificationTap,
     );
 
-    // Create notification channels
+    // Create notification channels with custom sound
     await _createNotificationChannels();
   }
 
   static Future<void> _createNotificationChannels() async {
-    // High priority alarm channel (using default system sound)
+    // High priority alarm channel with CUSTOM SOUND
     const alarmChannel = AndroidNotificationChannel(
       'todo_alarms',
       'Task Alarms',
       description: 'Alarm notifications for tasks',
       importance: Importance.max,
       playSound: true,
+      sound: RawResourceAndroidNotificationSound('alarm'), // Your mp3 file (without .mp3 extension)
       enableVibration: true,
       enableLights: true,
-      // Using default notification sound - more reliable
     );
 
     // Regular reminder channel
@@ -74,6 +74,7 @@ class NotificationService {
       await androidPlugin.createNotificationChannel(alarmChannel);
       await androidPlugin.createNotificationChannel(reminderChannel);
       await androidPlugin.createNotificationChannel(alertChannel);
+      print('✅ Notification channels created with custom alarm sound');
     }
   }
 
@@ -99,7 +100,7 @@ class NotificationService {
     print('Notification tapped: ${response.payload}');
   }
 
-  // Schedule EXACT TIME alarm notification
+  // Schedule EXACT TIME alarm notification with CUSTOM SOUND
   static Future<void> scheduleNotification(Todo todo) async {
     if (todo.notificationId == null) {
       print('⚠️ No notification ID for todo: ${todo.title}');
@@ -132,7 +133,7 @@ class NotificationService {
 
     // Only schedule if in the future (at least 1 second ahead)
     if (scheduledTime.isAfter(now.add(const Duration(seconds: 1)))) {
-      // MAIN ALARM at exact due time (using default system sound)
+      // MAIN ALARM at exact due time with CUSTOM SOUND
       const androidDetails = AndroidNotificationDetails(
         'todo_alarms',
         'Task Alarms',
@@ -143,7 +144,7 @@ class NotificationService {
         color: Color(0xFF2196F3),
         enableVibration: true,
         playSound: true,
-        // Using default sound - more reliable across all devices
+        sound: RawResourceAndroidNotificationSound('alarm'), // Custom alarm sound
         fullScreenIntent: true,
         category: AndroidNotificationCategory.alarm,
         visibility: NotificationVisibility.public,
@@ -162,7 +163,7 @@ class NotificationService {
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
-        sound: 'alarm.mp3',
+        sound: 'alarm.mp3', // For iOS
         interruptionLevel: InterruptionLevel.timeSensitive,
       );
 
@@ -182,6 +183,7 @@ class NotificationService {
           payload: todo.id,
         );
         print('✅ Main alarm scheduled successfully for ID: ${todo.notificationId}');
+        print('🔊 Custom alarm sound will play: alarm.mp3');
 
         // Immediately verify it was scheduled
         final pending = await _notifications.pendingNotificationRequests();
@@ -256,21 +258,25 @@ class NotificationService {
 
   static Future<void> showNotification(String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
-      'todo_alerts',
-      'Todo Alerts',
-      channelDescription: 'General alerts and notifications',
-      importance: Importance.high,
-      priority: Priority.high,
+      'todo_alarms', // Use alarm channel for test
+      'Task Alarms',
+      channelDescription: 'Alarm notifications for tasks',
+      importance: Importance.max,
+      priority: Priority.max,
       enableVibration: true,
       playSound: true,
+      sound: RawResourceAndroidNotificationSound('alarm'), // Custom sound
       icon: '@mipmap/ic_launcher',
       color: Color(0xFF2196F3),
+      fullScreenIntent: true,
+      category: AndroidNotificationCategory.alarm,
     );
 
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      sound: 'alarm.mp3',
     );
 
     try {
@@ -280,7 +286,7 @@ class NotificationService {
         body,
         const NotificationDetails(android: androidDetails, iOS: iosDetails),
       );
-      print('✅ Test notification sent!');
+      print('✅ Test alarm sent with custom sound!');
     } catch (e) {
       print('❌ Error showing notification: $e');
     }
