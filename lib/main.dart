@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:todo_app/SplashScreen.dart';
 import 'package:todo_app/screens/HomeScreen.dart';
 import 'package:todo_app/services/Storage%20Service.dart';
 import 'package:todo_app/services/Widget.dart';
@@ -109,7 +110,7 @@ class TodoApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const HomeScreen(),
+      home: const SplashScreen(),
     );
   }
 }
